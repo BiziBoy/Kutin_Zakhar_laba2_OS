@@ -14,6 +14,7 @@ namespace ConsoleApplication1
     public Producer(ChannelWriter<string> _writer)
     {
       Writer = _writer;
+      Task.WaitAll(Run());
     }
 
     private async Task Run()
@@ -60,6 +61,7 @@ namespace ConsoleApplication1
     {
       Reader = _reader;
       PasswordHash = _passwordHash;
+      Task.WaitAll(Run());
     }
 
     private async Task Run()
@@ -69,11 +71,16 @@ namespace ConsoleApplication1
         while (!Program.foundFlag)
         {
           var item = Reader.ReadAsync();
+          Console.WriteLine($"получены данные {item}");
           if (FoundHash(item.ToString()) != PasswordHash)
           {
             continue;
           }
-          else Program.foundFlag = true;
+          else
+          {
+            Console.WriteLine($"Пароль подобран - {item}");
+            Program.foundFlag = true;
+          } 
         }
       }
     }
@@ -94,7 +101,7 @@ namespace ConsoleApplication1
     }
 
   }
-  
+
   class Program
   {
     const string PATH = "passwordHashes.txt";
@@ -112,24 +119,16 @@ namespace ConsoleApplication1
       //Console.WriteLine(c.passwordGuessing(passwordHash));
       Console.Write("Введите количество потоков: ");
       int countStream = int.Parse(Console.ReadLine());
-      
+
       var channel = Channel.CreateUnbounded<string>();
-      var prod = Task.Run(() => 
+      var prod = Task.Run(() => { new Producer(channel.Writer); });
+      Task[] streams = new Task[countStream + 1];
+      streams[0] = prod;
+      for (int i = 1; i < countStream + 1; i++)
       {
-        new Producer(channel.Writer);
-      });
-
-      var cons = Task.Run(() => 
-      {
-        new Consumer(channel.Reader, passwordHash);
-      });
-      //Task[] streams = new Task[countStream + 1];
-      //streams[0] = prod;
-      //for (int i = 1; i < countStream + 1; i++)
-      //{
-      //  streams[i] = Task.Run(() => new Consumer(channel.Reader, passwordHash));
-      Task.WaitAll(prod, cons);
+        streams[i] = Task.Run(() => { new Consumer(channel.Reader, passwordHash); });
+      }
+      Task.WaitAll(streams);
     }
-
   }
 }
