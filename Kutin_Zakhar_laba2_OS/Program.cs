@@ -10,12 +10,10 @@ namespace ConsoleApplication1
   class Producer
   {
     private ChannelWriter<string> Writer;
-    //public string HashString { get; set; }
 
-    public Producer(ChannelWriter<string> _writer/*, string _hashString*/)
+    public Producer(ChannelWriter<string> _writer)
     {
       Writer = _writer;
-      //HashString = _hashString;
     }
 
     private async Task Run()
@@ -23,28 +21,31 @@ namespace ConsoleApplication1
       while (await Writer.WaitToWriteAsync())
       {
         char[] word = new char[5];
-        for (int i = 97; i < 123; i++)
+        if (!Program.foundFlag)
         {
-          word[0] = (char)i;
-          for (int k = 97; k < 123; k++)
+          for (int i = 97; i < 123; i++)
           {
-            word[1] = (char)k;
-            for (int l = 97; l < 123; l++)
+            word[0] = (char)i;
+            for (int k = 97; k < 123; k++)
             {
-              word[2] = (char)l;
-              for (int m = 97; m < 123; m++)
+              word[1] = (char)k;
+              for (int l = 97; l < 123; l++)
               {
-                word[3] = (char)m;
-                for (int n = 97; n < 123; n++)
+                word[2] = (char)l;
+                for (int m = 97; m < 123; m++)
                 {
-                  word[4] = (char)n;
-                  await Writer.WriteAsync(new string(word));
+                  word[3] = (char)m;
+                  for (int n = 97; n < 123; n++)
+                  {
+                    word[4] = (char)n;
+                    await Writer.WriteAsync(new string(word));
+                  }
                 }
               }
             }
           }
         }
-        
+        else return;
       }
     }
   }
@@ -53,33 +54,51 @@ namespace ConsoleApplication1
   class Consumer
   {
     private ChannelReader<string> Reader;
+    private string PasswordHash;
 
-    public Consumer(ChannelReader<string> _reader)
+    public Consumer(ChannelReader<string> _reader, string _passwordHash)
     {
       Reader = _reader;
+      PasswordHash = _passwordHash;
+    }
+
+    private async Task Run()
+    {
+      while (await Reader.WaitToReadAsync())
+      {
+        while (!Program.foundFlag)
+        {
+          var item = Reader.ReadAsync();
+          if (FoundHash(item.ToString()) != PasswordHash)
+          {
+            continue;
+          }
+          else Program.foundFlag = true;
+        }
+      }
     }
     /// <summary>
     /// Находит хеш str
     /// </summary>
     /// <param name="str"></param>
     /// <returns></returns>
-    public string foundHash(string str)
+    static public string FoundHash(string str)
     {
-      using (SHA256 sha256Hash = SHA256.Create())
-      {
-        //Из строки в байтовый массив
-        byte[] sourceBytes = Encoding.ASCII.GetBytes(str);
-        byte[] hashBytes = sha256Hash.ComputeHash(sourceBytes);
-        string hash = BitConverter.ToString(hashBytes).Replace("-", String.Empty);
-        //Console.WriteLine("The SHA256 hash of " + hash);
-        return hash;
-      }
+      SHA256 sha256Hash = SHA256.Create();
+      //Из строки в байтовый массив
+      byte[] sourceBytes = Encoding.ASCII.GetBytes(str);
+      byte[] hashBytes = sha256Hash.ComputeHash(sourceBytes);
+      string hash = BitConverter.ToString(hashBytes).Replace("-", String.Empty);
+      //Console.WriteLine("The SHA256 hash of " + hash);
+      return hash;
     }
-  }
 
+  }
+  
   class Program
   {
     const string PATH = "passwordHashes.txt";
+    static public bool foundFlag = false;
 
     static public void Main()
     {
@@ -91,9 +110,26 @@ namespace ConsoleApplication1
       string[] readText = File.ReadAllLines(PATH);
       string passwordHash = readText[sign - 1].ToUpper();
       //Console.WriteLine(c.passwordGuessing(passwordHash));
-      //Console.Write("Введите количество потоков: ");
-      //int countStream = int.Parse(Console.ReadLine());
-    
+      Console.Write("Введите количество потоков: ");
+      int countStream = int.Parse(Console.ReadLine());
+      
+      var channel = Channel.CreateUnbounded<string>();
+      var prod = Task.Run(() => 
+      {
+        new Producer(channel.Writer);
+      });
+
+      var cons = Task.Run(() => 
+      {
+        new Consumer(channel.Reader, passwordHash);
+      });
+      //Task[] streams = new Task[countStream + 1];
+      //streams[0] = prod;
+      //for (int i = 1; i < countStream + 1; i++)
+      //{
+      //  streams[i] = Task.Run(() => new Consumer(channel.Reader, passwordHash));
+      Task.WaitAll(prod, cons);
     }
+
   }
 }
