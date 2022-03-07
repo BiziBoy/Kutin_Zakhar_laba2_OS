@@ -2,8 +2,9 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Channels;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Threading.Channels;
 
 namespace ConsoleApplication1
 {
@@ -19,34 +20,39 @@ namespace ConsoleApplication1
 
     private async Task Run()
     {
+      //ожидает, когда освободиться место для записи элемента.
       while (await Writer.WaitToWriteAsync())
       {
         char[] word = new char[5];
-        if (!Program.foundFlag)
+        for (int i = 97; i < 123; i++)
         {
-          for (int i = 97; i < 123; i++)
+          word[0] = (char)i;
+          for (int k = 97; k < 123; k++)
           {
-            word[0] = (char)i;
-            for (int k = 97; k < 123; k++)
+            word[1] = (char)k;
+            for (int l = 97; l < 123; l++)
             {
-              word[1] = (char)k;
-              for (int l = 97; l < 123; l++)
+              word[2] = (char)l;
+              for (int m = 97; m < 123; m++)
               {
-                word[2] = (char)l;
-                for (int m = 97; m < 123; m++)
+                word[3] = (char)m;
+                for (int n = 97; n < 123; n++)
                 {
-                  word[3] = (char)m;
-                  for (int n = 97; n < 123; n++)
+                  word[4] = (char)n;
+                  if (!Program.foundFlag)
                   {
-                    word[4] = (char)n;
                     await Writer.WriteAsync(new string(word));
+                  }
+                  else
+                  {
+                    Writer.Complete();
+                    return;
                   }
                 }
               }
             }
           }
         }
-        else return;
       }
     }
   }
@@ -66,22 +72,20 @@ namespace ConsoleApplication1
 
     private async Task Run()
     {
+      // ожидает, когда освободиться место для чтения элемента.
       while (await Reader.WaitToReadAsync())
       {
-        while (!Program.foundFlag)
+        if (!Program.foundFlag)
         {
-          var item = Reader.ReadAsync();
-          Console.WriteLine($"получены данные {item}");
-          if (FoundHash(item.ToString()) != PasswordHash)
-          {
-            continue;
-          }
-          else
+          var item = await Reader.ReadAsync();
+          //Console.WriteLine($"получены данные {item}");
+          if (FoundHash(item.ToString()) == PasswordHash)
           {
             Console.WriteLine($"Пароль подобран - {item}");
             Program.foundFlag = true;
-          } 
+          }
         }
+        else return;
       }
     }
     /// <summary>
@@ -96,7 +100,6 @@ namespace ConsoleApplication1
       byte[] sourceBytes = Encoding.ASCII.GetBytes(str);
       byte[] hashBytes = sha256Hash.ComputeHash(sourceBytes);
       string hash = BitConverter.ToString(hashBytes).Replace("-", String.Empty);
-      //Console.WriteLine("The SHA256 hash of " + hash);
       return hash;
     }
 
@@ -116,19 +119,25 @@ namespace ConsoleApplication1
       int sign = int.Parse(Console.ReadLine());
       string[] readText = File.ReadAllLines(PATH);
       string passwordHash = readText[sign - 1].ToUpper();
-      //Console.WriteLine(c.passwordGuessing(passwordHash));
       Console.Write("Введите количество потоков: ");
       int countStream = int.Parse(Console.ReadLine());
 
-      var channel = Channel.CreateUnbounded<string>();
+      //создаю общий канал данных
+      Channel<string> channel = Channel.CreateBounded<string>(countStream);
+
+      //создается производитель
       var prod = Task.Run(() => { new Producer(channel.Writer); });
       Task[] streams = new Task[countStream + 1];
       streams[0] = prod;
+      //создаются потребители 
       for (int i = 1; i < countStream + 1; i++)
       {
         streams[i] = Task.Run(() => { new Consumer(channel.Reader, passwordHash); });
       }
+      //Ожидает завершения выполнения всех указанных объектов Task 
       Task.WaitAll(streams);
+      Console.WriteLine("Введите ENTER, чтобы выйти из программы.");
+      Console.ReadKey();
     }
   }
 }
